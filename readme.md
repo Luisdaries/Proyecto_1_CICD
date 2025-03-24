@@ -25,3 +25,8 @@ Este proyecto se trata de hacer un despliegue desde de una aplicativo basico hac
 10. GitOps: Infraestructura como codigo.
 
 11. Fumadocs: Aplicativo a desplegar.
+
+
+# Referencias
+- https://cnygaard.com/2022/02/26/how-to-fix-terraform-libvirt-permission-denied-on-var-lib-libvirt-images.html
+- https://github.com/jedi4ever/veewee/issues/996
