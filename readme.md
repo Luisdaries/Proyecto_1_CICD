@@ -27,6 +27,10 @@ Este proyecto se trata de hacer un despliegue desde de una aplicativo basico hac
 11. Fumadocs: Aplicativo a desplegar.
 
 
+Requisitos
+
+- Tener instalado Livirt, Vagrant, ansible en el Host
+
 # Referencias
 - https://cnygaard.com/2022/02/26/how-to-fix-terraform-libvirt-permission-denied-on-var-lib-libvirt-images.html
 - https://github.com/jedi4ever/veewee/issues/996

@@ -1,0 +1,121 @@
+---
+- name: Configurar nodos base
+  hosts: all
+  become: yes
+  tasks:
+  
+    - name: Actualizar sistema
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Instalar paquetes básicos
+      apt:
+        name:
+          - docker.io
+          - curl
+          - apt-transport-https
+          - ca-certificates
+          - gnupg
+        state: present
+
+
+    - name: Agregar repositorio de Kubernetes
+      shell: |
+        mkdir /etc/apt/keyrings/
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes
+        sudo chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg 
+        echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.32/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+        sudo chmod 644 /etc/apt/sources.list.d/kubernetes.list
+
+    - name: Actualizar sistema
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Instalar kubeadm, kubelet y kubectl
+      package:
+        name:
+          - kubeadm
+          - kubelet
+          - kubectl
+        state: present
+
+
+# Disable swap all nodes
+    - name: Disable swap
+      shell:
+        cmd: sudo swapoff -a
+      become: yes
+
+
+    - name: Remove Swap from fstab
+      shell:
+        cmd: sudo sed -i '/swap/d' /etc/fstab
+      become: yes
+
+# Configure Iptables on network
+    - name: Let iptables see bridged traffic
+      sysctl:
+        name: "{{ item }}"
+        value: "1"
+        state: present
+      loop:
+        - net.bridge.bridge-nf-call-iptables
+        - net.bridge.bridge-nf-call-ip6tables
+        - net.ipv4.ip_forward
+
+- name: Configurar nodo maestro
+  hosts: master
+  become: yes
+  tasks:
+    - name: Inicializar cluster Kubernetes
+      command: kubeadm init --pod-network-cidr={{ pod_network_cidr }} --apiserver-advertise-address={{ apiserver_advertise_address }}
+      args:
+        creates: /etc/kubernetes/admin.conf
+
+    - name: Crear directorio .kube
+      file:
+        path: /home/vagrant/.kube
+        state: directory
+        owner: vagrant
+        group: vagrant
+
+    - name: Copiar archivo de configuración
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/vagrant/.kube/config
+        owner: vagrant
+        group: vagrant
+        remote_src: yes
+
+    - name: Instalar Flannel network
+      command: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+      environment:
+        KUBECONFIG: /home/vagrant/.kube/config
+
+    - name: Obtener token de unión
+      command: kubeadm token create --print-join-command
+      register: join_command
+      changed_when: false
+
+    - name: Guardar comando de unión
+      copy:
+        content: "{{ join_command.stdout }}"
+        dest: /tmp/kubeadm_join_cmd.sh
+      delegate_facts: true
+
+- name: Unir nodos trabajadores
+  hosts: workers
+  become: yes
+  tasks:
+    - name: Copiar comando de unión desde master
+      slurp:
+        src: /tmp/kubeadm_join_cmd.sh
+      register: join_cmd_content
+      delegate_to: master
+
+    - name: Ejecutar comando de unión
+      command: "{{ join_cmd_content.content | b64decode }}"
+      args:
+        creates: /etc/kubernetes/kubelet.conf
